@@ -64,6 +64,7 @@ void ablauf_diagramm_2() {
 
 }
 
+//Programm druckt 0 aus, wen x ungerade ist und 1, wenn x gerade ist
 void programm_1() {
     drucke_text("Programm 1 gestartet.");
 
@@ -150,14 +151,11 @@ void programm_4() {
     drucke_text("Bitte geben Sie eine Ganzzahl ein:");
     int x = lies_ganzzahl();
 
-    long result = 1;
+    double result = pow(x, 218);
 
-    // Programm berechnet x hoch 218
-    for (int i = 1; i < 218; i++) {
-        result *= x;
-    }
 
-    drucke_ganzzahl(result);
+
+    drucke_kommazahl(result);
 
 }
 
