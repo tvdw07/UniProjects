@@ -3,8 +3,10 @@ project(AlPro LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(SOURCES
-        # uebungscode_02_02.cpp
-        uebungscode_02_03.cpp
+        # übungsblatt_02/uebungscode_02_02.cpp
+        # übungsblatt_02/uebungscode_02_03.cpp
+        übungsblatt_03/uebungsblatt_03.cpp
+
 )
 
 add_executable(AlPro ${SOURCES})
