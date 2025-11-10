@@ -45,7 +45,7 @@ double taylor_tan(const double x, const int n = 10) {
     const double sinx = taylor_sin(x, n);
     const double cosx = taylor_cos(x, n);
 
-    // Überprüfung, ob cos(x) nahe 0 ist
+    // Überprüfung, ob cos(x) nahe 0 ist da sonst division durch naherzu 0
     if (std::abs(cosx) < 1e-9) {
         return NAN;
     }
@@ -60,7 +60,7 @@ double taylor_cot(const double x, const int n = 10) {
     const double sinx = taylor_sin(x, n);
     const double cosx = taylor_cos(x, n);
 
-    // Überprüfung, ob sin(x) nahe 0 ist
+    // Überprüfung, ob sin(x) nahe 0 ist da sonst division durch nahezu 0
     if (std::abs(sinx) < 1e-9) {
         return NAN;
     }
