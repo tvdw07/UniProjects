@@ -26,7 +26,6 @@ int lies_ganzzahl();
 double lies_gleitkommazahl();
 
 
-
 void ablauf_diagramm_1() {
     drucke_text("Ablaufdiagramm 1 gestartet.");
 
@@ -42,7 +41,7 @@ void ablauf_diagramm_1() {
 void ablauf_diagramm_2() {
     drucke_text("Ablaufdiagramm 2 gestartet.");
 
-    int y;
+    int y = 0;
     //Programm empfängt eine Zahl >= 0
     while (true) {
         drucke_text("Bitte geben Sie eine Zahl >= 0 ein:");
@@ -61,7 +60,6 @@ void ablauf_diagramm_2() {
 
     //Das ergebnis ist 1 bei ungerader Eingabe und 0 bei gerader Eingabe
     drucke_ganzzahl(y);
-
 }
 
 //Programm druckt 0 aus, wen x ungerade ist und 1, wenn x gerade ist
@@ -77,8 +75,6 @@ void programm_1() {
     x = x % 2;
 
     drucke_ganzzahl(x);
-
-
 }
 
 
@@ -95,7 +91,8 @@ Konzepte um und was gibt es bei der Sprachsyntax zu beachten?";
     drucke_text("Programm 2 gestartet.");
 
     //Abfrage ob eigener Text eingegeben werden soll
-    drucke_text("Druecke y wenn du selber einen Text eingeben moechtest, oder n um den vorgegebenen Text zu verwenden:");
+    drucke_text(
+        "Druecke y wenn du selber einen Text eingeben moechtest, oder n um den vorgegebenen Text zu verwenden:");
     std::string eingabe = lies_wort();
 
     if (eingabe == "y") {
@@ -108,11 +105,10 @@ Konzepte um und was gibt es bei der Sprachsyntax zu beachten?";
     }
 
 
-
     int s = 0;
 
     // Programm geht jeden Charakter im Text durch und zählt die Satzzeichen
-    for (char c : text) {
+    for (char c: text) {
         if (c == '.' or c == '!' or c == '?') {
             s++;
         }
@@ -120,8 +116,6 @@ Konzepte um und was gibt es bei der Sprachsyntax zu beachten?";
 
     // Programm gibt die Anzahl der Satzzeichen aus
     drucke_ganzzahl(s);
-
-
 }
 
 
@@ -132,7 +126,7 @@ void programm_3() {
     // Programm geht jede Zahl in der Liste durch und summiert die Zahlen
     int summe = 0;
 
-    for (int i : zahlen) {
+    for (int i: zahlen) {
         summe += i;
     }
 
@@ -140,7 +134,6 @@ void programm_3() {
     double average = summe / (double) zahlen.size();
 
     drucke_kommazahl(average);
-
 }
 
 
@@ -149,14 +142,14 @@ void programm_4() {
 
     // Programm empfängt eine Ganzzahl
     drucke_text("Bitte geben Sie eine Ganzzahl ein:");
+
+    // Porgramm rechnet x^218
     int x = lies_ganzzahl();
 
     double result = pow(x, 218);
 
 
-
     drucke_kommazahl(result);
-
 }
 
 
@@ -217,4 +210,3 @@ double lies_gleitkommazahl() {
     }
     return lies_gleitkommazahl;
 }
-

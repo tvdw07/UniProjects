@@ -1,9 +1,12 @@
 // Zur Blatt 02 Aufgabe 03
 
+// For the pow funktion
 #include <cmath>
 #include <iostream>
 #include <string>
 #include <vector>
+
+//To get the current year
 #include <ctime>
 
 // Druckt einen Text aus
@@ -37,7 +40,7 @@ int get_current_year() {
 
 
 void alter_von_alan_turing_erraten() {
-  // constexpr weil IDE mit const nicht zufrieden ist
+  // constexpr weil IDE mit const nicht zufrieden ist (Constexp setzt variable schon während des compilen)
   constexpr int geburtsjahr_alan_turing = 1912;
   const int current_year = get_current_year();
   const int alter_alan_turing = current_year - geburtsjahr_alan_turing;
