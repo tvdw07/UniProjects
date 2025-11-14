@@ -5,7 +5,7 @@
 
 // Demonstration der Funktionen
 int main() {
-    int x = M_PI / 4; // 45 Grad in Radiant
+    double x = M_PI / 4; // 45 Grad in Radiant
     double tol = 1e-6; // Toleranzwert
 
     const double result_sin = sinus(x, tol);

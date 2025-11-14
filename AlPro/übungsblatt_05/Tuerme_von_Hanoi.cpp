@@ -118,6 +118,7 @@ int main() {
     game.print_game_state();
 
     std::cout << "\nSolve Tuerme von Hanoi...\n";
+
     if (game.solve(true)) {
         std::cout << "Solved Successfully!\n";
     } else {

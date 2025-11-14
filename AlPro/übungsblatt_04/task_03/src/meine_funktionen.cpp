@@ -20,7 +20,7 @@ double sinus_taylor_recursive(const double x, const int n, const double tol) {
 
 // Wrapper Funktion für Sinus mit Standardtoleranz
 double sinus(const double x) {
-    constexpr int default_toleranzwert = 1e-10;
+    constexpr double default_toleranzwert = 1e-10;
     return sinus_taylor_recursive(x, 0, default_toleranzwert);
 }
 
@@ -31,7 +31,7 @@ double sinus(const double x, const double toleranzwert) {
 
 // Kosinus wird als Sinus(x + π/2) berechnet
 double kosinus(const double x) {
-    constexpr int default_toleranzwert = 1e-10;
+    constexpr double default_toleranzwert = 1e-10;
     return sinus_taylor_recursive(x + M_PI/2, 0, default_toleranzwert);
 }
 
