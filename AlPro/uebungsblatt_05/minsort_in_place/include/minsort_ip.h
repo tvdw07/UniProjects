@@ -12,7 +12,7 @@
  * @param start Startindex (inklusive) im Vektor, ab dem gesucht wird.
  * @return Index des kleinsten Elements im Bereich [start, arr.size()).
  */
-int get_index_of_min(const std::vector<int> &arr, size_t start);
+int get_index_of_min(const std::vector<int> &arr, std::size_t start);
 
 /**
  * @brief Vertauscht die beiden übergebenen Ganzzahlen.
