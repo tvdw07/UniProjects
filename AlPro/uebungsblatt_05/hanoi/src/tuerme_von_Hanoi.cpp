@@ -11,6 +11,8 @@
 bool TowersOfHanoi::is_legal(const std::vector<int> &arr) const {
     // Größtmöglicher int als Startwert für den vorherigen (oben liegenden) Ring
     int last = std::numeric_limits<int>::max();
+
+    // Gehe alle Scheiben im Turm von oben nach unten durch
     for (int i : arr) {
         // Wenn die aktuelle Scheibe größer ist als die vorherige, ist der Zustand illegal
         if (i > last) return false;
@@ -24,7 +26,7 @@ bool TowersOfHanoi::is_legal(const std::vector<int> &arr) const {
 void TowersOfHanoi::print_tower(const std::vector<int> &tower, const char *name) const {
     std::cout << name << ": [";
     for (size_t i = 0; i < tower.size(); ++i) {
-        // Komma-Trenner vor allen Elementen außer dem ersten
+        // Komma-Trenner vor allen Elementen außer dem ersten (i wird als bool interpretiert)
         if (i) std::cout << ", ";
         std::cout << tower[i];
     }

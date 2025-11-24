@@ -9,6 +9,8 @@
 // Gibt den Index des kleinsten Elements ab Position 'start' zurück
 int get_index_of_min(const std::vector<int> &arr, const size_t start) {
     size_t min_index = start;
+
+    //For schleife durchsucht das Array ab 'start' nach dem kleinsten Wert (also nur den unsortieren Teil)
     for (size_t i = start + 1; i < arr.size(); ++i) {
         if (arr[i] < arr[min_index]) {
             min_index = i; // neuen Minimalwert gefunden
@@ -38,6 +40,8 @@ std::vector<int> generateRandomArray(const int size) {
     std::mt19937 rng(std::random_device{}());           // Zufallszahlengenerator
     std::uniform_int_distribution<int> dist(0, 99);     // Wertebereich
 
+    // Fill the array with random values
+    //auto stands for the type of the variable x, which is int in this case
     for (auto &x : arr) {
         x = dist(rng); // Zufallswert eintragen
     }

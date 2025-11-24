@@ -42,17 +42,20 @@ public:
      * @param von Startknoten
      * @param nach Zielknoten
      * @return true wenn Kante existiert, false sonst
+     * const - verändert den Graphen nicht
      */
     bool hatKante(int von, int nach) const;
 
     /**
      * Gibt die Anzahl der Knoten zurück
      * @return Anzahl der Knoten
+     * const - verändert den Graphen nicht
      */
     int getAnzahlKnoten() const;
 
     /**
      * Gibt alle Knoten und Kanten des Graphen aus
+     * const - verändert den Graphen nicht
      */
     void ausdrucken() const;
 
@@ -61,6 +64,7 @@ private:
      * Hilfsfunktion: Prüft ob ein Knoten gültig ist
      * @param knoten Der zu prüfende Knoten
      * @return true wenn gültig (0 <= knoten < anzahlKnoten)
+     * const - verändert den Graphen nicht
      */
     bool istGueltigerKnoten(int knoten) const;
 };

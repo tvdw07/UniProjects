@@ -3,7 +3,7 @@
 
 // Konstruktor: Initialisiert den Graphen mit n Knoten
 SimplerGraph::SimplerGraph(const int n) : anzahlKnoten(n) {
-    // Erstelle eine n x n Matrix, initial mit false gefüllt (keine Kanten)
+    // Erstelle eine n x n Matrix, am Anfang mit false gefüllt (keine Kanten)
     adjazenzmatrix.resize(n, std::vector<bool>(n, false));
 }
 
