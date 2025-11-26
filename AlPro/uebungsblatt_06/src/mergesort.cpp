@@ -8,6 +8,7 @@
 
 
 //Youtube: Algorithmen und Datenstrukturen - Mergesort (Merge Sort) - YouTube (Pseudocode)
+// Einelementriege Listen sind Sortiert
 
 // Führt zwei sortierte Teilarrays zusammen
 void merge(std::vector<int> &arr, const std::size_t left, const std::size_t mid, const std::size_t right) {
@@ -73,6 +74,7 @@ std::vector<int> generateRandomArray(const int size) {
     std::mt19937 rng(std::random_device{}());           // Zufallszahlengenerator
     std::uniform_int_distribution<int> dist(0, 99);     // Wertebereich
 
+    //auto für alle typen in dem Beispiel ist es int
     for (auto &x : arr) {
         x = dist(rng); // Zufallswert eintragen
     }

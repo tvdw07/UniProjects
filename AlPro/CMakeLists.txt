@@ -12,3 +12,15 @@ add_executable(AlPro
 target_include_directories(AlPro PRIVATE
         ${CMAKE_SOURCE_DIR}/uebungsblatt_06/include
 )
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(AlPro PRIVATE -Wall -Wextra -Werror)
+elseif (MSVC)
+    target_compile_options(AlPro PRIVATE /W4 /WX) # /WX = treat warnings as errors
+endif()
+
+
+
+enable_testing()
+add_subdirectory(tests)
+

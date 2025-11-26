@@ -23,8 +23,12 @@ double measureAverageTime(void (*sortFunction)(std::vector<int>&), const int siz
         timer.stop();
         const double t = timer.get_microseconds();
         // falls Timer 0 oder negativ (unwahrscheinlich), ignoriere Iteration
-        if (t > 0.0) totalTime += t;
-        else iterations = std::max(1, iterations - 1);
+        if (t > 0.0) {
+            totalTime += t;
+        }
+        else {
+            iterations = std::max(1, iterations - 1);
+        }
     }
     return totalTime / static_cast<double>(std::max(1, iterations));
 }
@@ -77,7 +81,7 @@ int main() {
     std::cout << "===========================================\n\n";
 
     // Konfiguration
-    const std::vector<int> sizes = {100, 1000, 10000, 100000, 1000000, 5000000, 10000000, 100000000};  // bis 100M möglich
+    const std::vector<int> sizes = {100, 1000, 10000, 100000, 1000000, 5000000, 10000000, 1e8};  // bis 100M möglich
     constexpr int iterations = 10;  // Basis-Wiederholungen pro Größe
 
     // Ausgabe der Testparameter
@@ -88,7 +92,7 @@ int main() {
     testAlgorithm(mergeSort, "Mergesort", sizes, iterations);
     testAlgorithm(schnellsort, "Schnellsort (Quicksort)", sizes, iterations);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 //Beispielausgabe:

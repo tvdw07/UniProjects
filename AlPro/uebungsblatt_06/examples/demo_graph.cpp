@@ -49,5 +49,5 @@ int main() {
     }
     graph2.ausdrucken();
 
-    return 0;
+    return EXIT_SUCCESS;
 }

@@ -4,6 +4,7 @@
 #include "tuerme_von_Hanoi.h"
 #include <iostream>
 #include <limits>
+#include <vector>
 
 // --- Private Hilfsmethoden ---
 
