@@ -14,13 +14,13 @@ int main() {
 
     const std::vector<int> bfs = graph1.BFS(0);
     std::cout << "BFS ab Knoten 0: ";
-    for (int knoten : bfs) {
+    for (const int knoten : bfs) {
         std::cout << knoten << " ";
     }
 
     const std::vector<int> dfs = graph1.DFS(0);
     std::cout << "\nDFS ab Knoten 0: ";
-    for (int knoten : dfs) {
+    for (const int knoten : dfs) {
         std::cout << knoten << " ";
     }
 

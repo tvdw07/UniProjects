@@ -82,6 +82,14 @@ private:
      * const - verändert den Graphen nicht
      */
     bool istGueltigerKnoten(int knoten) const;
+
+    /**
+     * Rekursive Hilfsfunktion für DFS
+     * @param knoten Der aktuell besuchte Knoten
+     * @param besucht Vektor der bereits besuchten Knoten
+     * @param besuchteKnoten Vektor der besuchten Knoten in der Reihenfolge
+     */
+    void DFS_rekursiv(int knoten, std::vector<bool>& besucht, std::vector<int>& besuchteKnoten) const;
 };
 
 

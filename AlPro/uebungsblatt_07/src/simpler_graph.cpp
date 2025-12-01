@@ -2,7 +2,6 @@
 #include "../include/simpler_graph.h"
 #include <iostream>
 #include <queue>
-#include <stack>
 
 // Konstruktor: Initialisiert den Graphen mit n Knoten
 SimplerGraph::SimplerGraph(const int n) : anzahlKnoten(n) {
@@ -126,27 +125,23 @@ std::vector<int> SimplerGraph::DFS(const int startKnoten) const {
     }
 
     std::vector<bool> besucht(anzahlKnoten, false);
-    std::stack<int> stapel;
-
-    stapel.push(startKnoten);
-    while (!stapel.empty()) {
-        int aktuellerKnoten = stapel.top();
-        stapel.pop();
-
-        if (!besucht[aktuellerKnoten]) {
-            besucht[aktuellerKnoten] = true;
-            besuchteKnoten.push_back(aktuellerKnoten);
-
-            // Füge alle unbesuchten Nachbarn hinzu
-            for (int nachbar = anzahlKnoten - 1; nachbar >= 0; nachbar--) {
-                if (adjazenzmatrix[aktuellerKnoten][nachbar] && !besucht[nachbar]) {
-                    stapel.push(nachbar);
-                }
-            }
-        }
-    }
+    DFS_rekursiv(startKnoten, besucht, besuchteKnoten);
 
     return besuchteKnoten;
+}
+
+// Rekursive Hilfsfunktion für DFS
+void SimplerGraph::DFS_rekursiv(const int knoten, std::vector<bool>& besucht, std::vector<int>& besuchteKnoten) const {
+    // Markiere den aktuellen Knoten als besucht
+    besucht[knoten] = true;
+    besuchteKnoten.push_back(knoten);
+
+    // Besuche alle unbesuchten Nachbarn rekursiv
+    for (int nachbar = 0; nachbar < anzahlKnoten; nachbar++) {
+        if (adjazenzmatrix[knoten][nachbar] && !besucht[nachbar]) {
+            DFS_rekursiv(nachbar, besucht, besuchteKnoten);
+        }
+    }
 }
 
 // Hilfsfunktion: Prüft Knotengültigkeit
