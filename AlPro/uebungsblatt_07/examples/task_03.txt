@@ -1,0 +1,14 @@
+Entfernen eines Elementes aus einer doppelt verketteten Liste
+Sei x das zu entfernende Element.
+
+1. Element steht am Anfang (Head)
+    head = x.next
+    falls ein neuer Head existiert: head.prev = null
+
+2. Element steht am Ende (Tail)
+    tail = x.prev
+    falls ein neuer Tail existiert: tail.next = null
+
+3. Element steht in der Mitte
+    x.prev.next = x.next
+    x.next.prev = x.prev
