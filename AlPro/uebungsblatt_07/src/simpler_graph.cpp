@@ -88,7 +88,7 @@ void SimplerGraph::ausdrucken() const {
     std::cout << std::endl;
 }
 
-std::vector<int> SimplerGraph::BFS(int startKnoten) const {
+std::vector<int> SimplerGraph::BFS(const int startKnoten) const {
     std::vector<int> besuchteKnoten;
     if (!istGueltigerKnoten(startKnoten)) {
         return besuchteKnoten; // Ungültiger Startknoten
