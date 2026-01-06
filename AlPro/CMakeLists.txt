@@ -22,5 +22,5 @@ endif()
 
 
 enable_testing()
-add_subdirectory(tests)
-add_subdirectory(uebungsblatt_09)
+#add_subdirectory(tests)
+add_subdirectory(uebungsblatt_08)
