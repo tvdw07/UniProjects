@@ -1,0 +1,3 @@
+f() -> Base::f();
+g("Hi") -> Base::g(std::String);
+g() -> Derived::g();
