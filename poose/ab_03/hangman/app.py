@@ -1,10 +1,46 @@
+"""
+Gemini 3.1 Pro:
+Erstelle eine flask application unter ab_03 hangman,
+welche ein hangman speil darstellt.
+dazu soll auf der website eine viduelle darstellung eines hangmans gebaut werden,
+sowei eine tastatur auf der festplatte, wo buchstaben rot werden,
+wenn sie schon vorgekommen sind.
+Das backend bitte mit python und rest api.
+
+Bewertung: Spiel direkt spielbar
+
+
+ Gemini 3.1 Pro:
+
+Bitte füge dem frontend einen Tastatur listener hinzu.
+Zusätzlich sollen buchstaben die drinnen waren grün werden.
+
+Bewertung: Tastatur listener funktioniert.
+
+
+Gemini 3.1 Pro:
+bitte lass app.py die Wörter aus der words Datei nutzten.
+
+
+"""
+
+
 from flask import Flask, request, jsonify, render_template, session
 import random
+
+import os
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_hangman_key'
 
-WORDS = ["PYTHON", "FLASK", "HANGMAN", "DEVELOPER", "WEB", "CODING"]
+words_file_path = os.path.join(os.path.dirname(__file__), 'words')
+try:
+    with open(words_file_path, 'r', encoding='utf-8') as f:
+        WORDS = [line.strip().upper() for line in f if line.strip()]
+    if not WORDS:
+        WORDS = ["PYTHON", "FLASK", "HANGMAN", "DEVELOPER", "WEB", "CODING"]
+except Exception:
+    WORDS = ["PYTHON", "FLASK", "HANGMAN", "DEVELOPER", "WEB", "CODING"]
 
 @app.route('/')
 def index():
