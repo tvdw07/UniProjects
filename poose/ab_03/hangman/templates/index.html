@@ -7,7 +7,8 @@
         body { font-family: Arial, sans-serif; text-align: center; }
         #word-display { font-size: 2em; letter-spacing: 0.2em; margin: 20px; }
         .keyboard button { margin: 5px; padding: 10px; font-size: 1.2em; }
-        .keyboard button.used { background-color: red; color: white; border: none; }
+        .keyboard button.wrong { background-color: red; color: white; border: none; }
+        .keyboard button.correct { background-color: green; color: white; border: none; }
         .keyboard { max-width: 600px; margin: 20px auto; }
         #hangman-display { white-space: pre; font-family: monospace; font-size: 1.2em; margin: 20px; text-align: center; display: inline-block; text-align: left; }
     </style>
@@ -119,7 +120,11 @@
                 const btn = document.createElement('button');
                 btn.innerText = letter;
                 if (gameState.guessed_letters?.includes(letter)) {
-                    btn.classList.add('used');
+                    if (gameState.display_word.includes(letter)) {
+                        btn.classList.add('correct');
+                    } else {
+                        btn.classList.add('wrong');
+                    }
                     btn.disabled = true;
                 }
                 if (gameState.status !== 'playing') {
@@ -129,6 +134,14 @@
                 kb.appendChild(btn);
             });
         }
+
+        document.addEventListener('keydown', (event) => {
+            if (gameState.status !== 'playing') return;
+            const key = event.key.toUpperCase();
+            if (alphabets.includes(key)) {
+                guessLetter(key);
+            }
+        });
 
         startGame();
     </script>
