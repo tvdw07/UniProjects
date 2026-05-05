@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hangman Game</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #word-display { font-size: 2em; letter-spacing: 0.2em; margin: 20px; }
+        .keyboard button { margin: 5px; padding: 10px; font-size: 1.2em; }
+        .keyboard button.used { background-color: red; color: white; border: none; }
+        .keyboard { max-width: 600px; margin: 20px auto; }
+        #hangman-display { white-space: pre; font-family: monospace; font-size: 1.2em; margin: 20px; text-align: center; display: inline-block; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>Hangman</h1>
+    <div id="hangman-display"></div>
+    <div id="word-display"></div>
+    <h2 id="message"></h2>
+    <div class="keyboard" id="keyboard"></div>
+    <br>
+    <button onclick="startGame()" style="padding: 10px 20px; font-size: 1.2em;">Restart Game</button>
+
+    <script>
+        const alphabets = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        const stages = [
+            `
+  +---+
+  |   |
+      |
+      |
+      |
+      |
+=========`,
+            `
+  +---+
+  |   |
+  O   |
+      |
+      |
+      |
+=========`,
+            `
+  +---+
+  |   |
+  O   |
+  |   |
+      |
+      |
+=========`,
+            `
+  +---+
+  |   |
+  O   |
+ /|   |
+      |
+      |
+=========`,
+            `
+  +---+
+  |   |
+  O   |
+ /|\\  |
+      |
+      |
+=========`,
+            `
+  +---+
+  |   |
+  O   |
+ /|\\  |
+ /    |
+      |
+=========`,
+            `
+  +---+
+  |   |
+  O   |
+ /|\\  |
+ / \\  |
+      |
+=========`
+        ];
+
+        let gameState = {};
+
+        async function startGame() {
+            const res = await fetch('/api/start', { method: 'POST' });
+            gameState = await res.json();
+            render();
+        }
+
+        async function guessLetter(letter) {
+            if (gameState.guessed_letters?.includes(letter)) return;
+            const res = await fetch('/api/guess', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ letter })
+            });
+            gameState = await res.json();
+            render();
+        }
+
+        function render() {
+            document.getElementById('word-display').innerText = gameState.display_word;
+            document.getElementById('hangman-display').innerText = stages[gameState.mistakes];
+
+            if (gameState.status === 'won') {
+                document.getElementById('message').innerText = 'You won!';
+            } else if (gameState.status === 'lost') {
+                document.getElementById('message').innerText = 'You lost! The word was ' + gameState.word;
+            } else {
+                document.getElementById('message').innerText = `Mistakes: ${gameState.mistakes}/6`;
+            }
+
+            const kb = document.getElementById('keyboard');
+            kb.innerHTML = '';
+            alphabets.forEach(letter => {
+                const btn = document.createElement('button');
+                btn.innerText = letter;
+                if (gameState.guessed_letters?.includes(letter)) {
+                    btn.classList.add('used');
+                    btn.disabled = true;
+                }
+                if (gameState.status !== 'playing') {
+                    btn.disabled = true;
+                }
+                btn.onclick = () => guessLetter(letter);
+                kb.appendChild(btn);
+            });
+        }
+
+        startGame();
+    </script>
+</body>
+</html>
+
