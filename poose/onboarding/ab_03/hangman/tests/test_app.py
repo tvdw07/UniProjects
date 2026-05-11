@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
 
-from poose.ab_03.hangman.app import app
+from poose.onboarding.ab_03.hangman.app import app
 
 
 # -----------------------------
