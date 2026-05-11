@@ -1,0 +1,9 @@
+setuptools
+wheel
+yt-dlp
+ultralytics
+opencv-python
+numpy
+scipy
+pandas
+matplotlib
