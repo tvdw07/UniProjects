@@ -44,7 +44,7 @@ if YOLO is None:
     raise RuntimeError("ultralytics YOLO not installed. Install with: python -m pip install ultralytics")
 
 print("[INFO] Loading YOLO model...")
-model_path = "yolov8m.engine" if os.path.exists("yolov8m.engine") else "yolov8m.pt"
+model_path = "yolov8x.engine" if os.path.exists("yolov8x.engine") else "yolov8x.pt"
 model = YOLO(model_path)
 print(f"[INFO] YOLO model loaded from {model_path}.")
 
@@ -81,7 +81,7 @@ class SmoothStream:
             return self.q.popleft()
         return None
 
-YOUTUBE_URL = "https://www.youtube.com/watch?v=M3EYAY2MftI"
+YOUTUBE_URL = "https://www.youtube.com/live/6dp-bvQ7RWo?si=inGVO0ahx3pV5ISU"
 VIDEO_URL = get_youtube_stream_url(YOUTUBE_URL)
 
 # Instanz starten
@@ -116,7 +116,7 @@ while True:
             frame,
             persist=True,
             tracker="bytetrack.yaml",
-            conf=0.32,
+            conf=0.3,
             classes=[2,3,5,7],
             device=0,
             half=True,
