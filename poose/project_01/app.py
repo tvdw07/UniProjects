@@ -116,7 +116,7 @@ while True:
             frame,
             persist=True,
             tracker="bytetrack.yaml",
-            conf=0.3,
+            conf=0.25,
             classes=[2,3,5,7],
             device=0,
             half=True,
