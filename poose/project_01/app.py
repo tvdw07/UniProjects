@@ -80,10 +80,20 @@ class ThreadedCamera:
         self.thread.join()
         self.cap.release()
 
+from collections import deque
+
 YOUTUBE_URL = "https://www.youtube.com/watch?v=M3EYAY2MftI"
 VIDEO_URL = get_youtube_stream_url(YOUTUBE_URL)
 
 cap = ThreadedCamera(VIDEO_URL)
+
+# Calculate buffer size for 10 seconds (defaulting to 30 fps if unavailable)
+fps = cap.cap.get(cv2.CAP_PROP_FPS)
+if fps <= 0:
+    fps = 30
+buffer_size = int(fps * 10)
+frame_buffer = deque(maxlen=buffer_size)
+print(f"[INFO] 10s Ring buffer initialized with size: {buffer_size} frames")
 
 # Using ultralytics' built-in tracking (ByteTrack) via model.track
 print("[INFO] Using ultralytics.track with ByteTrack (tracker config expected, e.g. 'bytetrack.yaml')")
@@ -97,11 +107,24 @@ while True:
         print("[ERROR] Frame not received")
         break
 
+    frame_buffer.append(frame)
+
+    # Wait until the buffer is full to analyze 10s in the past
+    if len(frame_buffer) < buffer_size:
+        # Show current frame while buffering (optional)
+        cv2.imshow("Vehicle Detection + Tracking", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        continue
+
+    # Get the frame that is 10s in the past
+    delayed_frame = frame_buffer[0]
+
     # -----------------------------
     # DETECTION + TRACKING via ultralytics model.track (uses ByteTrack YAML config)
     # -----------------------------
     results = model.track(
-        frame,
+        delayed_frame,
         persist=True,
         tracker="bytetrack.yaml",
         conf=0.35,
