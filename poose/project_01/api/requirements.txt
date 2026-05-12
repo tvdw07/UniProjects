@@ -8,3 +8,9 @@ scipy
 pandas
 matplotlib
 lap
+onnx
+onnxslim
+onnxruntime-gpu
+tensorrt
+fastapi
+uvicorn

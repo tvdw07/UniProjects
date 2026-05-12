@@ -159,7 +159,7 @@ def main():
                 frame,
                 persist=True,
                 tracker="bytetrack.yaml",
-                conf=0.25,
+                conf=0.28,
                 classes=tracked_class_ids,
                 device=0,
                 half=True,
