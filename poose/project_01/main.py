@@ -1,0 +1,82 @@
+import cv2
+import os
+import time
+import torch
+from stream_utils import SmoothStream, get_youtube_stream_url
+from config import YOUTUBE_URL
+
+try:
+    from ultralytics import YOLO
+except Exception:
+    YOLO = None
+
+print(torch.cuda.is_available())
+print(torch.version.cuda)
+print(torch.cuda.device_count())
+
+def main():
+    if YOLO is None:
+        raise RuntimeError("ultralytics YOLO not installed. Install with: python -m pip install ultralytics")
+
+    print("[INFO] Loading YOLO model...")
+    model_path = "yolov8x.engine" if os.path.exists("yolov8x.engine") else "yolov8x.pt"
+    model = YOLO(model_path)
+    print(f"[INFO] YOLO model loaded from {model_path}.")
+
+    VIDEO_URL = get_youtube_stream_url(YOUTUBE_URL)
+
+    # Instanz starten
+    stream = SmoothStream(VIDEO_URL).start()
+
+    print("[INFO] Using ultralytics.track with ByteTrack (tracker config expected, e.g. 'bytetrack.yaml')")
+
+    # FPS-Kontrolle
+    fps_target = 30
+    frame_duration = 1.0 / fps_target
+    last_time = time.time()
+
+    # -----------------------------
+    # MAIN LOOP
+    # -----------------------------
+    while True:
+        current_time = time.time()
+
+        # Warte bis der nächste Frame laut Zeitplan dran ist
+        if current_time - last_time < frame_duration:
+            continue
+
+        frame = stream.get_frame() # Schau in die Vergangenheit (Puffer-Anfang)
+
+        if frame is not None:
+            # Falls der Puffer ZU voll wird (> 90%), überspringe Frames um Lags aufzuholen
+            if len(stream.q) > 280:
+                for _ in range(5): stream.pop_frame()
+
+            results = model.track(
+                frame,
+                persist=True,
+                tracker="bytetrack.yaml",
+                conf=0.25,
+                classes=[2,3,5,7],
+                device=0,
+                half=True,
+                verbose=False
+            )
+
+            # Anzeige
+            annotated = results[0].plot()
+            cv2.imshow("RTX 4070 - No Lag Mode", annotated)
+
+            # Den verarbeiteten Frame nun aus dem Puffer entfernen
+            stream.pop_frame()
+            last_time = current_time
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    stream.stopped = True
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
+
