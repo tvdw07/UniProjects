@@ -1,6 +1,9 @@
 import cv2
 import yt_dlp
 import os
+import time
+import threading
+from collections import deque
 
 # Detection & tracking imports: keep only YOLO + ByteTrack
 try:
@@ -49,100 +52,87 @@ print(f"[INFO] YOLO model loaded from {model_path}.")
 # VIDEO STREAM
 # -----------------------------
 
-class ThreadedCamera:
-    def __init__(self, src):
-        self.cap = cv2.VideoCapture(src)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        if not self.cap.isOpened():
-            raise RuntimeError("[ERROR] Could not open video source.")
-        self.ret, self.frame = self.cap.read()
+class SmoothStream:
+    def __init__(self, url):
+        self.cap = cv2.VideoCapture(url)
+        # WICHTIG: Buffer im Backend klein halten
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+        self.q = deque(maxlen=300) # 10s Puffer bei 30fps
         self.stopped = False
-        import threading
-        self.thread = threading.Thread(target=self.update, args=())
-        self.thread.daemon = True
-        self.thread.start()
+
+    def start(self):
+        t = threading.Thread(target=self.update, args=())
+        t.daemon = True
+        t.start()
+        return self
 
     def update(self):
         while not self.stopped:
-            if not self.cap.isOpened():
-                break
             ret, frame = self.cap.read()
-            if ret:
-                self.frame = frame
-            else:
-                self.stopped = True
+            if not ret:
+                break
+            self.q.append(frame)
 
-    def read(self):
-        return self.ret, self.frame
+    def get_frame(self):
+        return self.q[0] if len(self.q) > 0 else None
 
-    def release(self):
-        self.stopped = True
-        self.thread.join()
-        self.cap.release()
-
-from collections import deque
+    def pop_frame(self):
+        if len(self.q) > 0:
+            return self.q.popleft()
+        return None
 
 YOUTUBE_URL = "https://www.youtube.com/watch?v=M3EYAY2MftI"
 VIDEO_URL = get_youtube_stream_url(YOUTUBE_URL)
 
-cap = ThreadedCamera(VIDEO_URL)
-
-# Calculate buffer size for 10 seconds (defaulting to 30 fps if unavailable)
-fps = cap.cap.get(cv2.CAP_PROP_FPS)
-if fps <= 0:
-    fps = 30
-buffer_size = int(fps * 10)
-frame_buffer = deque(maxlen=buffer_size)
-print(f"[INFO] 10s Ring buffer initialized with size: {buffer_size} frames")
+# Instanz starten
+stream = SmoothStream(VIDEO_URL).start()
 
 # Using ultralytics' built-in tracking (ByteTrack) via model.track
 print("[INFO] Using ultralytics.track with ByteTrack (tracker config expected, e.g. 'bytetrack.yaml')")
+
+# FPS-Kontrolle
+fps_target = 30
+frame_duration = 1.0 / fps_target
+last_time = time.time()
 
 # -----------------------------
 # MAIN LOOP
 # -----------------------------
 while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("[ERROR] Frame not received")
-        break
+    current_time = time.time()
 
-    frame_buffer.append(frame)
-
-    # Wait until the buffer is full to analyze 10s in the past
-    if len(frame_buffer) < buffer_size:
-        # Show current frame while buffering (optional)
-        cv2.imshow("Vehicle Detection + Tracking", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+    # Warte bis der nächste Frame laut Zeitplan dran ist
+    if current_time - last_time < frame_duration:
         continue
 
-    # Get the frame that is 10s in the past
-    delayed_frame = frame_buffer[0]
+    frame = stream.get_frame() # Schau in die Vergangenheit (Puffer-Anfang)
 
-    # -----------------------------
-    # DETECTION + TRACKING via ultralytics model.track (uses ByteTrack YAML config)
-    # -----------------------------
-    results = model.track(
-        delayed_frame,
-        persist=True,
-        tracker="bytetrack.yaml",
-        conf=0.35,
-        classes=[2,3,5,7],
-        device=0,
-        half=True,
-        imgsz=640,
-        verbose=False,
-    )
-    res = results[0]
+    if frame is not None:
+        # Falls der Puffer ZU voll wird (> 90%), überspringe Frames um Lags aufzuholen
+        if len(stream.q) > 280:
+            for _ in range(5): stream.pop_frame()
 
-    # Use native plot to avoid CPU transfer
-    annotated_frame = res.plot()
+        results = model.track(
+            frame,
+            persist=True,
+            tracker="bytetrack.yaml",
+            conf=0.32,
+            classes=[2,3,5,7],
+            device=0,
+            half=True,
+            verbose=False
+        )
 
-    cv2.imshow("Vehicle Detection + Tracking", annotated_frame)
+        # Anzeige
+        annotated = results[0].plot()
+        cv2.imshow("RTX 4070 - No Lag Mode", annotated)
+
+        # Den verarbeiteten Frame nun aus dem Puffer entfernen
+        stream.pop_frame()
+        last_time = current_time
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-cap.release()
+stream.stopped = True
 cv2.destroyAllWindows()
