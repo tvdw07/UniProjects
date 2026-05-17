@@ -4,6 +4,7 @@ import time
 import torch
 import threading
 import asyncio
+from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
 from io import BytesIO
@@ -43,6 +44,7 @@ counter_state = {
     "tracked_class_ids": [],
     "labels": {},
     "lock": threading.Lock(),
+    "history": [],
 }
 
 
@@ -93,6 +95,64 @@ def _fit_to_display(image, max_width, max_height):
     scale = min(max_width / width, max_height / height)
     new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
     return cv2.resize(image, new_size, interpolation=cv2.INTER_AREA), scale, scale
+
+
+def _trim_counter_history(now_ts=None, max_age_seconds=600):
+    now_ts = time.time() if now_ts is None else now_ts
+    cutoff = now_ts - max_age_seconds
+    counter_state["history"] = [entry for entry in counter_state["history"] if entry["ts"] >= cutoff]
+
+
+def _record_counter_history(total_value):
+    now_ts = time.time()
+    counter_state["history"].append({"ts": now_ts, "total": int(total_value)})
+    _trim_counter_history(now_ts)
+
+
+def _total_at_timestamp(history, target_ts):
+    if not history:
+        return None
+    eligible = [entry for entry in history if entry["ts"] <= target_ts]
+    if eligible:
+        return int(eligible[-1]["total"])
+    return int(history[0]["total"])
+
+
+def _snapshot_counter_stats():
+    with counter_state["lock"]:
+        counts = dict(counter_state["vehicle_counts"])
+        running = counter_state["running"]
+        line_points = list(counter_state["line_points"])
+
+        now_ts = time.time()
+        _trim_counter_history(now_ts)
+        history = list(counter_state["history"])
+
+    total = sum(counts.values())
+
+    if len(history) >= 2:
+        first = history[0]
+        last = history[-1]
+        elapsed = max(last["ts"] - first["ts"], 1.0)
+        delta_total = max(0, int(last["total"] - first["total"]))
+        avg_per_second = delta_total / elapsed
+    else:
+        avg_per_second = 0.0
+
+    return {
+        "total": total,
+        "counts": counts,
+        "running": running,
+        "line_points": line_points,
+        "history": history,
+        "window_seconds": 600,
+        "avg_per_second": avg_per_second,
+        "avg_per_minute": avg_per_second * 60.0,
+        "expected_30s": avg_per_second * 30.0,
+        "samples": len(history),
+        "history_start": history[0]["ts"] if history else None,
+        "history_end": history[-1]["ts"] if history else None,
+    }
 
 
 def _process_frame(frame):
@@ -201,6 +261,18 @@ def counter_worker():
             last_time = current_time
 
 
+def stats_worker():
+    """Background worker that samples current total count for last-10-minute stats"""
+    while True:
+        try:
+            with counter_state["lock"]:
+                total = sum(counter_state["vehicle_counts"].values())
+                _record_counter_history(total)
+        except Exception as e:
+            print(f"[STATS] Error recording counter history: {e}")
+        time.sleep(1)
+
+
 # =============================================
 # FASTAPI APP
 # =============================================
@@ -243,6 +315,9 @@ async def startup_event():
     worker_thread = threading.Thread(target=counter_worker, daemon=True)
     worker_thread.start()
 
+    stats_thread = threading.Thread(target=stats_worker, daemon=True)
+    stats_thread.start()
+
 
 @app.post("/start")
 async def start_counter():
@@ -280,16 +355,13 @@ async def reset_counter():
 @app.get("/get_counter")
 async def get_counter():
     """Get current vehicle counts"""
-    with counter_state["lock"]:
-        counts = dict(counter_state["vehicle_counts"])
+    return _snapshot_counter_stats()
 
-    total = sum(counts.values())
-    return {
-        "total": total,
-        "counts": counts,
-        "running": counter_state["running"],
-        "line_points": counter_state["line_points"]
-    }
+
+@app.get("/counter_stats")
+async def counter_stats():
+    """Return rolling 10-minute counter statistics for betting previews"""
+    return _snapshot_counter_stats()
 
 
 @app.get("/stream_preview")
