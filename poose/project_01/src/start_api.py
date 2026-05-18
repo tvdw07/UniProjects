@@ -1,35 +1,21 @@
 import cv2
 import os
 import time
-import torch
 import threading
-import asyncio
-from datetime import datetime
 from collections import defaultdict
-from pathlib import Path
-from io import BytesIO
-import base64
-
 from fastapi import FastAPI, Response, HTTPException
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from stream_utils import SmoothStream, get_youtube_stream_url
 import config as app_config
+import data_manager
+from stream_utils import SmoothStream, get_youtube_stream_url
 
 try:
     from ultralytics import YOLO
 except Exception:
     YOLO = None
-
-# =============================================
-# GLOBAL STATE
-# =============================================
-CONFIG_PATH = Path(__file__).with_name("config.py")
-WINDOW_NAME = "RTX 4070 - No Lag Mode"
-DISPLAY_WIDTH = 1280
-DISPLAY_HEIGHT = 720
 
 # Counter state
 counter_state = {
@@ -41,67 +27,9 @@ counter_state = {
     "model": None,
     "stream": None,
     "current_frame": None,
-    "tracked_class_ids": [],
-    "labels": {},
     "lock": threading.Lock(),
     "history": [],
 }
-
-
-# =============================================
-# HELPER FUNCTIONS (copied from main.py)
-# =============================================
-
-def _reload_config_values():
-    import importlib
-    import config as app_config
-    importlib.reload(app_config)
-    loc = getattr(app_config, "CURRENT_LOCATION", "tokyo")
-    locations = getattr(app_config, "LOCATIONS", {})
-    if loc in locations:
-        line_points = locations[loc].get("line", [])
-    else:
-        line_points = getattr(app_config, "COUNTING_LINE_POINTS", [])
-    
-    tracked_ids = list(getattr(app_config, "TRACKED_CLASS_IDS", [2, 3, 5, 7]))
-    labels = dict(getattr(app_config, "LABELS", {}))
-    return line_points, tracked_ids, labels, loc
-
-
-def _persist_counting_line_points(points, loc=None):
-    if loc is None:
-        loc = counter_state.get("current_location", "tokyo")
-    text = CONFIG_PATH.read_text(encoding="utf-8")
-    new_lines = []
-    
-    import ast
-    # We do a simple approach: if we can find the LOCATIONS block, we just do a simple replacement or rewrite.
-    # To be safe, we'll actually import config and rewrite the whole LOCATIONS dict.
-    # Wait, simple string replacement in config text is error prone for dicts.
-    import config as temp_config
-    import importlib
-    importlib.reload(temp_config)
-    locations = temp_config.LOCATIONS
-    locations[loc]["line"] = points
-    
-    import pprint
-    locations_str = "LOCATIONS = " + pprint.pformat(locations, width=120)
-    
-    inside_locations = False
-    for line in text.splitlines():
-        if line.startswith("LOCATIONS ="):
-            inside_locations = True
-            new_lines.append(locations_str)
-        elif inside_locations:
-            if line.startswith("CURRENT_LOCATION =") or (line and not line.startswith(" ") and "=" in line and "}" not in line and not line.strip().startswith("}")):
-                # might have overshot
-                if line.startswith("CURRENT_LOCATION ="):
-                    inside_locations = False
-                    new_lines.append(line)
-        else:
-            new_lines.append(line)
-            
-    CONFIG_PATH.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
 def _point_side(px, py, ax, ay, bx, by):
@@ -116,15 +44,6 @@ def _crossed_segment(prev_center, curr_center, p1, p2):
     return prev_side == 0 or curr_side == 0 or (prev_side < 0 < curr_side) or (prev_side > 0 > curr_side)
 
 
-def _fit_to_display(image, max_width, max_height):
-    height, width = image.shape[:2]
-    if width <= max_width and height <= max_height:
-        return image, 1.0, 1.0
-    scale = min(max_width / width, max_height / height)
-    new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
-    return cv2.resize(image, new_size, interpolation=cv2.INTER_AREA), scale, scale
-
-
 def _trim_counter_history(now_ts=None, max_age_seconds=600):
     now_ts = time.time() if now_ts is None else now_ts
     cutoff = now_ts - max_age_seconds
@@ -137,27 +56,16 @@ def _record_counter_history(total_value):
     _trim_counter_history(now_ts)
 
 
-def _total_at_timestamp(history, target_ts):
-    if not history:
-        return None
-    eligible = [entry for entry in history if entry["ts"] <= target_ts]
-    if eligible:
-        return int(eligible[-1]["total"])
-    return int(history[0]["total"])
-
-
 def _snapshot_counter_stats():
     with counter_state["lock"]:
         counts = dict(counter_state["vehicle_counts"])
         running = counter_state["running"]
         line_points = list(counter_state["line_points"])
-
         now_ts = time.time()
         _trim_counter_history(now_ts)
         history = list(counter_state["history"])
 
     total = sum(counts.values())
-
     if len(history) >= 2:
         first = history[0]
         last = history[-1]
@@ -185,7 +93,6 @@ def _snapshot_counter_stats():
 
 
 def _process_frame(frame):
-    """Process frame with tracking and counting logic"""
     if counter_state["model"] is None or not counter_state["running"]:
         return frame
 
@@ -193,9 +100,9 @@ def _process_frame(frame):
         results = counter_state["model"].track(
             frame,
             persist=True,
-            tracker="bytetrack.yaml",
-            conf=0.25,
-            classes=counter_state["tracked_class_ids"],
+            tracker=app_config.TRACKER_CONFIG,
+            conf=app_config.DEFAULT_CONFIDENCE,
+            classes=app_config.TRACKED_CLASS_IDS,
             device=0,
             half=True,
             verbose=False
@@ -203,14 +110,14 @@ def _process_frame(frame):
 
         result = results[0]
         boxes = result.boxes
-
         line_points = counter_state["line_points"]
+
         if boxes is not None and boxes.id is not None and len(line_points) == 2:
             p1, p2 = line_points
             for box, track_id, cls_id in zip(boxes.xyxy, boxes.id.tolist(), boxes.cls.tolist()):
                 track_id = int(track_id)
                 cls_id = int(cls_id)
-                if cls_id not in counter_state["tracked_class_ids"]:
+                if cls_id not in app_config.TRACKED_CLASS_IDS:
                     continue
 
                 x1, y1, x2, y2 = box.tolist()
@@ -218,16 +125,16 @@ def _process_frame(frame):
                 previous_center = counter_state["previous_centers"].get(track_id)
                 counter_state["previous_centers"][track_id] = center
 
-                if _crossed_segment(previous_center, center, p1, p2) and track_id not in counter_state["counted_track_ids"]:
+                if _crossed_segment(previous_center, center, p1, p2) and track_id not in counter_state[
+                    "counted_track_ids"]:
                     counter_state["counted_track_ids"].add(track_id)
-                    vehicle_name = counter_state["labels"].get(cls_id, f"class_{cls_id}")
+                    vehicle_name = app_config.LABELS.get(cls_id, f"class_{cls_id}")
                     counter_state["vehicle_counts"][vehicle_name] += 1
-                    print(f"[COUNT] {vehicle_name}: {counter_state['vehicle_counts'][vehicle_name]} (track_id={track_id})")
+                    print(
+                        f"[COUNT] {vehicle_name}: {counter_state['vehicle_counts'][vehicle_name]} (track_id={track_id})")
 
         annotated = result.plot()
 
-        # Draw counting line and info
-        line_points = counter_state["line_points"]
         if len(line_points) == 1:
             cv2.circle(annotated, line_points[0], 5, (0, 255, 255), -1)
             cv2.putText(annotated, "Click second point", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
@@ -235,40 +142,33 @@ def _process_frame(frame):
             cv2.line(annotated, line_points[0], line_points[1], (0, 255, 255), 2)
             cv2.circle(annotated, line_points[0], 5, (0, 255, 255), -1)
             cv2.circle(annotated, line_points[1], 5, (0, 255, 255), -1)
-            cv2.putText(annotated, f"Line: {line_points[0]} -> {line_points[1]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-        else:
-            cv2.putText(annotated, "Click 2 points to set counting line", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            cv2.putText(annotated, f"Line: {line_points[0]} -> {line_points[1]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8, (0, 255, 255), 2)
 
         overlay_y = 65
         cv2.putText(annotated, "Counts:", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         overlay_y += 28
         total_count = sum(counter_state["vehicle_counts"].values())
-        cv2.putText(annotated, f"total: {total_count}", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(annotated, f"total: {total_count}", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255),
+                    2)
         overlay_y += 26
         for name in sorted(counter_state["vehicle_counts"].keys()):
-            cv2.putText(annotated, f"{name}: {counter_state['vehicle_counts'][name]}", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(annotated, f"{name}: {counter_state['vehicle_counts'][name]}", (10, overlay_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             overlay_y += 26
 
         return annotated
-
     except Exception as e:
         print(f"[ERROR] Error processing frame: {e}")
         return frame
 
 
-# =============================================
-# WORKER THREAD
-# =============================================
-
 def counter_worker():
-    """Background worker that continuously processes frames"""
-    fps_target = 30
-    frame_duration = 1.0 / fps_target
+    frame_duration = 1.0 / app_config.FPS_TARGET
     last_time = time.time()
 
     while True:
-        time.sleep(0.01)  # Small sleep to avoid busy loop
-
+        time.sleep(0.01)
         if not counter_state["running"] or counter_state["stream"] is None:
             continue
 
@@ -291,7 +191,6 @@ def counter_worker():
 
 
 def stats_worker():
-    """Background worker that samples current total count for last-10-minute stats"""
     while True:
         try:
             with counter_state["lock"]:
@@ -302,17 +201,24 @@ def stats_worker():
         time.sleep(1)
 
 
-# =============================================
-# FASTAPI APP
-# =============================================
-
 app = FastAPI(
     title="Vehicle Counter API",
-    description="Real-time vehicle counting system with YOLOv8 and ByteTrack",
-    version="1.0.0"
+    description="""
+# Vehicle Counter API
+
+This API controls a machine learning-based vehicle counting system tracking various streams.
+
+## Features
+- **Stream Control**: Start, stop and reset the video analysis.
+- **Location Management**: Change the camera / stream location dynamically.
+- **Live Data**: Query statistics of the current counting session.
+- **Media**: Access live image previews and continuous MJPEG video streams.
+""",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url=None
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -324,38 +230,26 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize model and start worker thread"""
     if YOLO is None:
-        raise RuntimeError("ultralytics YOLO not installed. Install with: python -m pip install ultralytics")
+        raise RuntimeError("ultralytics YOLO not installed.")
 
-    print("[INFO] Loading YOLO model...")
-    model_path = "yolov8x.engine" if os.path.exists("yolov8x.engine") else "yolov8x.pt"
-    counter_state["model"] = YOLO(model_path)
-    print(f"[INFO] YOLO model loaded from {model_path}.")
+    print(f"[INFO] Loading YOLO model from {app_config.MODEL_PATH}...")
+    counter_state["model"] = YOLO(app_config.MODEL_PATH)
 
-    line_points, tracked_class_ids, labels, loc = _reload_config_values()
-    if not line_points:
-        line_points = []
+    loc, line_points, _ = data_manager.get_current_location_data()
     counter_state["line_points"] = [tuple(map(int, p)) for p in line_points[:2]]
-    counter_state["tracked_class_ids"] = tracked_class_ids
-    counter_state["labels"] = labels
     counter_state["current_location"] = loc
 
-    # Start worker thread
-    worker_thread = threading.Thread(target=counter_worker, daemon=True)
-    worker_thread.start()
-
-    stats_thread = threading.Thread(target=stats_worker, daemon=True)
-    stats_thread.start()
+    threading.Thread(target=counter_worker, daemon=True).start()
+    threading.Thread(target=stats_worker, daemon=True).start()
 
 
 @app.post("/start")
 async def start_counter():
-    """Start the vehicle counter"""
+    """Starts the vehicle counter stream. If the stream is not initialized, it sets it up and begins counting."""
     if counter_state["stream"] is None:
         try:
-            loc = counter_state.get("current_location", "tokyo")
-            url = app_config.LOCATIONS.get(loc, {}).get("url", app_config.YOUTUBE_URL)
+            _, _, url = data_manager.get_current_location_data()
             video_url = get_youtube_stream_url(url)
             counter_state["stream"] = SmoothStream(video_url).start()
             print("[INFO] Stream started")
@@ -368,100 +262,83 @@ async def start_counter():
 
 @app.post("/location/{loc_id}")
 async def set_location(loc_id: str):
-    """Change the location URL and counter line"""
-    import config as temp_config
-    import importlib
-    importlib.reload(temp_config)
-    
-    if loc_id not in temp_config.LOCATIONS:
+    """Sets a new location for the vehicle counter, updating the camera view and counting line based on location data."""
+    all_data = data_manager.load_data()
+    if loc_id not in all_data.get("locations", {}):
         raise HTTPException(status_code=404, detail="Location not found")
-        
+
     with counter_state["lock"]:
         counter_state["running"] = False
         if counter_state["stream"] is not None:
             counter_state["stream"].stopped = True
             counter_state["stream"] = None
-            
+
         counter_state["vehicle_counts"] = defaultdict(int)
         counter_state["counted_track_ids"] = set()
         counter_state["previous_centers"] = {}
         counter_state["current_location"] = loc_id
-        
-        # update config file with CURRENT_LOCATION
-        text = CONFIG_PATH.read_text(encoding="utf-8")
-        new_lines = []
-        for line in text.splitlines():
-            if line.startswith("CURRENT_LOCATION ="):
-                new_lines.append(f"CURRENT_LOCATION = '{loc_id}'")
-            else:
-                new_lines.append(line)
-        CONFIG_PATH.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-        
-        # Load new line
-        line = temp_config.LOCATIONS[loc_id].get("line", [])
+
+        data_manager.update_current_location(loc_id)
+
+        line = all_data["locations"][loc_id].get("line", [])
         counter_state["line_points"] = [tuple(map(int, p)) for p in line[:2]]
-        
-    # Start stream with new url
+
     try:
-        url = temp_config.LOCATIONS[loc_id]["url"]
+        url = all_data["locations"][loc_id]["url"]
         video_url = get_youtube_stream_url(url)
         counter_state["stream"] = SmoothStream(video_url).start()
         counter_state["running"] = True
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start stream for new location: {str(e)}")
-        
+        raise HTTPException(status_code=500, detail=f"Failed to start stream: {str(e)}")
+
     return {"status": "success", "location": loc_id}
 
 
 @app.post("/stop")
 async def stop_counter():
-    """Stop the vehicle counter"""
+    """Stops the vehicle counter stream from processing frames."""
     counter_state["running"] = False
-    return {"status": "stopped", "message": "Counter stopped"}
+    return {"status": "stopped"}
 
 
 @app.post("/reset")
 async def reset_counter():
-    """Reset all counters to 0"""
+    """Resets the statistics and counts of tracked vehicles back to zero."""
     with counter_state["lock"]:
         counter_state["vehicle_counts"] = defaultdict(int)
         counter_state["counted_track_ids"] = set()
         counter_state["previous_centers"] = {}
-    print("[INFO] Counter reset")
-    return {"status": "reset", "message": "All counters reset to 0", "counts": {}}
+    return {"status": "reset"}
 
 
 @app.get("/get_counter")
 async def get_counter():
-    """Get current vehicle counts"""
+    """Retrieves the current state and totals of the tracked vehicles."""
     return _snapshot_counter_stats()
 
 
 @app.get("/counter_stats")
 async def counter_stats():
-    """Return rolling 10-minute counter statistics for betting previews"""
+    """Retrieves detailed statistics and history of the vehicle counting process."""
     return _snapshot_counter_stats()
 
 
 @app.get("/stream_preview")
 async def stream_preview():
-    """Return current frame as PNG image"""
+    """Returns a single image captured from the current frame of the stream."""
     if counter_state["current_frame"] is None:
-        raise HTTPException(status_code=503, detail="Stream not initialized or no frame available")
+        raise HTTPException(status_code=503, detail="No frame available")
 
     with counter_state["lock"]:
         frame = counter_state["current_frame"].copy()
 
-    # Encode frame as PNG
     success, buffer = cv2.imencode('.png', frame)
     if not success:
-        raise HTTPException(status_code=500, detail="Failed to encode frame")
-
+        raise HTTPException(status_code=500, detail="Encoding failed")
     return Response(content=buffer.tobytes(), media_type="image/png")
 
 
 def generate_stream():
-    """Generator for streaming MJPEG video"""
     while True:
         if counter_state["current_frame"] is None:
             time.sleep(0.05)
@@ -470,59 +347,32 @@ def generate_stream():
         with counter_state["lock"]:
             frame = counter_state["current_frame"].copy()
 
-        # Encode frame as JPEG
         success, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if success:
-            frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n'
-                   b'Content-Length: ' + str(len(frame_bytes)).encode() + b'\r\n\r\n'
-                   + frame_bytes + b'\r\n')
-        time.sleep(0.033)  # ~30 fps
+                   b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        time.sleep(0.033)
 
 
 @app.get("/stream")
 async def stream():
-    """Stream live labeled video as MJPEG"""
+    """Provides a continuous MJPEG stream of the annotated video feed."""
     if counter_state["model"] is None:
         raise HTTPException(status_code=503, detail="Model not initialized")
-
-    return StreamingResponse(
-        generate_stream(),
-        media_type="multipart/x-mixed-replace; boundary=frame"
-    )
+    return StreamingResponse(generate_stream(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "model_loaded": counter_state["model"] is not None,
-        "running": counter_state["running"],
-        "stream_active": counter_state["stream"] is not None
-    }
+    """Health check endpoint to verify the API is running and returns basic status."""
+    return {"status": "healthy", "running": counter_state["running"]}
 
 
 @app.get("/")
 async def root():
-    """API root with documentation links"""
-    return {
-        "message": "Vehicle Counter API",
-        "docs": "/docs",
-        "endpoints": {
-            "start": "POST /start",
-            "stop": "POST /stop",
-            "reset": "POST /reset",
-            "get_counter": "GET /get_counter",
-            "stream_preview": "GET /stream_preview",
-            "stream": "GET /stream",
-            "health": "GET /health"
-        }
-    }
+    """Root endpoint for basic API information."""
+    return {"message": "Vehicle Counter API", "docs": "/docs"}
 
 
 if __name__ == "__main__":
-    print("[INFO] Starting FastAPI server on http://localhost:8000")
-    print("[INFO] Documentation available at http://localhost:8000/docs")
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -12,9 +12,8 @@ def get_youtube_stream_url(youtube_url):
 class SmoothStream:
     def __init__(self, url):
         self.cap = cv2.VideoCapture(url)
-        # WICHTIG: Buffer im Backend klein halten
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
-        self.q = deque(maxlen=300) # 10s Puffer bei 30fps
+        self.q = deque(maxlen=300)
         self.stopped = False
 
     def start(self):
@@ -37,4 +36,3 @@ class SmoothStream:
         if len(self.q) > 0:
             return self.q.popleft()
         return None
-
