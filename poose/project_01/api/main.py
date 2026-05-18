@@ -24,26 +24,50 @@ DISPLAY_HEIGHT = 720
 
 
 def _reload_config_values():
-    line_points = getattr(app_config, "COUNTING_LINE_POINTS", None)
+    import importlib
+    importlib.reload(app_config)
+    loc = getattr(app_config, "CURRENT_LOCATION", "tokyo")
+    locations = getattr(app_config, "LOCATIONS", {})
+    if loc in locations:
+        line_points = locations[loc].get("line", [])
+    else:
+        line_points = getattr(app_config, "COUNTING_LINE_POINTS", [])
+
     tracked_ids = list(getattr(app_config, "TRACKED_CLASS_IDS", [2, 3, 5, 7]))
     labels = dict(getattr(app_config, "LABELS", {}))
-    return line_points, tracked_ids, labels
+    return line_points, tracked_ids, labels, loc
 
 
-def _persist_counting_line_points(points):
+def _persist_counting_line_points(points, loc=None):
+    if loc is None:
+        loc = getattr(app_config, "CURRENT_LOCATION", "tokyo")
     text = CONFIG_PATH.read_text(encoding="utf-8")
     new_lines = []
-    replaced = False
-    serialized = f"COUNTING_LINE_POINTS = {repr(points)}"
+
+    import importlib
+    import config as temp_config
+    importlib.reload(temp_config)
+    locations = temp_config.LOCATIONS
+    if loc in locations:
+        locations[loc]["line"] = points
+
+    import pprint
+    locations_str = "LOCATIONS = " + pprint.pformat(locations, width=120)
+
+    inside_locations = False
     for line in text.splitlines():
-        if line.startswith("COUNTING_LINE_POINTS =") or line.startswith("COUNTING_LINE_Y ="):
-            if not replaced:
-                new_lines.append(serialized)
-                replaced = True
+        if line.startswith("LOCATIONS ="):
+            inside_locations = True
+            new_lines.append(locations_str)
+        elif inside_locations:
+            if line.startswith("CURRENT_LOCATION =") or (line and not line.startswith(" ") and "=" in line and "}" not in line and not line.strip().startswith("}")):
+                # overshot
+                if line.startswith("CURRENT_LOCATION ="):
+                    inside_locations = False
+                    new_lines.append(line)
         else:
             new_lines.append(line)
-    if not replaced:
-        new_lines.append(serialized)
+
     CONFIG_PATH.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
@@ -77,7 +101,7 @@ def main():
     model = YOLO(model_path)
     print(f"[INFO] YOLO model loaded from {model_path}.")
 
-    line_points, tracked_class_ids, labels = _reload_config_values()
+    line_points, tracked_class_ids, labels, loc = _reload_config_values()
     if not line_points:
         line_points = []
     line_points = [tuple(map(int, p)) for p in line_points[:2]]
@@ -102,16 +126,56 @@ def main():
             if len(line_points) < 2:
                 line_points.append((fx, fy))
                 if len(line_points) == 2:
-                    app_config.COUNTING_LINE_POINTS = line_points
-                    _persist_counting_line_points(line_points)
-                    print(f"[INFO] Counting line set to {line_points} and saved to config.py")
+                    _persist_counting_line_points(line_points, loc)
+                    print(f"[INFO] Counting line set to {line_points} and saved to config.py for {loc}")
             else:
                 line_points = [(fx, fy)]
-                app_config.COUNTING_LINE_POINTS = line_points
-                _persist_counting_line_points(line_points)
-                print(f"[INFO] Restarted line selection with first point {(fx, fy)}")
+                _persist_counting_line_points(line_points, loc)
+                print(f"[INFO] Restarted line selection with first point {(fx, fy)} for {loc}")
 
-    VIDEO_URL = get_youtube_stream_url(app_config.YOUTUBE_URL)
+    def switch_location(new_loc):
+        nonlocal loc, line_points, stream, vehicle_counts, counted_track_ids, previous_centers
+        import config as temp_config
+        import importlib
+        importlib.reload(temp_config)
+        locations = getattr(temp_config, "LOCATIONS", {})
+        if new_loc not in locations:
+            print(f"[ERROR] Location {new_loc} not found.")
+            return
+
+        loc = new_loc
+        stream.stopped = True
+
+        # update config
+        text = CONFIG_PATH.read_text(encoding="utf-8")
+        new_lines = []
+        for line in text.splitlines():
+            if line.startswith("CURRENT_LOCATION ="):
+                new_lines.append(f"CURRENT_LOCATION = '{loc}'")
+            else:
+                new_lines.append(line)
+        CONFIG_PATH.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+        # load new line
+        line = locations[loc].get("line", [])
+        line_points = [tuple(map(int, p)) for p in line[:2]]
+
+        # start new stream
+        try:
+            url = locations[loc]["url"]
+            video_url = get_youtube_stream_url(url)
+            stream = SmoothStream(video_url).start()
+        except Exception as e:
+            print(f"[ERROR] Failed to start stream for {loc}: {e}")
+
+        # reset counts
+        vehicle_counts = defaultdict(int)
+        counted_track_ids = set()
+        previous_centers = {}
+        print(f"[INFO] Switched to location: {loc}")
+
+    url = app_config.LOCATIONS.get(loc, {}).get("url", app_config.YOUTUBE_URL)
+    VIDEO_URL = get_youtube_stream_url(url)
 
     # Instanz starten
     stream = SmoothStream(VIDEO_URL).start()
@@ -133,6 +197,14 @@ def main():
     while True:
         current_time = time.time()
 
+        location_keys = {
+            ord('1'): "tokyo",
+            ord('2'): "koh_samui",
+            ord('3'): "bangkok",
+            ord('4'): "california",
+            ord('5'): "london",
+        }
+
         if current_time - last_time < frame_duration:
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
@@ -144,8 +216,10 @@ def main():
             if key == ord('r'):
                 line_points = []
                 app_config.COUNTING_LINE_POINTS = line_points
-                _persist_counting_line_points(line_points)
+                _persist_counting_line_points(line_points, loc)
                 print("[INFO] Counting line reset")
+            if key in location_keys:
+                switch_location(location_keys[key])
             continue
 
         frame = stream.get_frame() # Schau in die Vergangenheit (Puffer-Anfang)
@@ -229,8 +303,10 @@ def main():
         if key == ord('r'):
             line_points = []
             app_config.COUNTING_LINE_POINTS = line_points
-            _persist_counting_line_points(line_points)
+            _persist_counting_line_points(line_points, loc)
             print("[INFO] Counting line reset")
+        if key in location_keys:
+            switch_location(location_keys[key])
 
     stream.stopped = True
     cv2.destroyAllWindows()

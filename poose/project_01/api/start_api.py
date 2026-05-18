@@ -53,26 +53,54 @@ counter_state = {
 # =============================================
 
 def _reload_config_values():
-    line_points = getattr(app_config, "COUNTING_LINE_POINTS", None)
+    import importlib
+    import config as app_config
+    importlib.reload(app_config)
+    loc = getattr(app_config, "CURRENT_LOCATION", "tokyo")
+    locations = getattr(app_config, "LOCATIONS", {})
+    if loc in locations:
+        line_points = locations[loc].get("line", [])
+    else:
+        line_points = getattr(app_config, "COUNTING_LINE_POINTS", [])
+    
     tracked_ids = list(getattr(app_config, "TRACKED_CLASS_IDS", [2, 3, 5, 7]))
     labels = dict(getattr(app_config, "LABELS", {}))
-    return line_points, tracked_ids, labels
+    return line_points, tracked_ids, labels, loc
 
 
-def _persist_counting_line_points(points):
+def _persist_counting_line_points(points, loc=None):
+    if loc is None:
+        loc = counter_state.get("current_location", "tokyo")
     text = CONFIG_PATH.read_text(encoding="utf-8")
     new_lines = []
-    replaced = False
-    serialized = f"COUNTING_LINE_POINTS = {repr(points)}"
+    
+    import ast
+    # We do a simple approach: if we can find the LOCATIONS block, we just do a simple replacement or rewrite.
+    # To be safe, we'll actually import config and rewrite the whole LOCATIONS dict.
+    # Wait, simple string replacement in config text is error prone for dicts.
+    import config as temp_config
+    import importlib
+    importlib.reload(temp_config)
+    locations = temp_config.LOCATIONS
+    locations[loc]["line"] = points
+    
+    import pprint
+    locations_str = "LOCATIONS = " + pprint.pformat(locations, width=120)
+    
+    inside_locations = False
     for line in text.splitlines():
-        if line.startswith("COUNTING_LINE_POINTS =") or line.startswith("COUNTING_LINE_Y ="):
-            if not replaced:
-                new_lines.append(serialized)
-                replaced = True
+        if line.startswith("LOCATIONS ="):
+            inside_locations = True
+            new_lines.append(locations_str)
+        elif inside_locations:
+            if line.startswith("CURRENT_LOCATION =") or (line and not line.startswith(" ") and "=" in line and "}" not in line and not line.strip().startswith("}")):
+                # might have overshot
+                if line.startswith("CURRENT_LOCATION ="):
+                    inside_locations = False
+                    new_lines.append(line)
         else:
             new_lines.append(line)
-    if not replaced:
-        new_lines.append(serialized)
+            
     CONFIG_PATH.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
@@ -152,6 +180,7 @@ def _snapshot_counter_stats():
         "samples": len(history),
         "history_start": history[0]["ts"] if history else None,
         "history_end": history[-1]["ts"] if history else None,
+        "current_location": counter_state.get("current_location", "tokyo")
     }
 
 
@@ -304,12 +333,13 @@ async def startup_event():
     counter_state["model"] = YOLO(model_path)
     print(f"[INFO] YOLO model loaded from {model_path}.")
 
-    line_points, tracked_class_ids, labels = _reload_config_values()
+    line_points, tracked_class_ids, labels, loc = _reload_config_values()
     if not line_points:
         line_points = []
     counter_state["line_points"] = [tuple(map(int, p)) for p in line_points[:2]]
     counter_state["tracked_class_ids"] = tracked_class_ids
     counter_state["labels"] = labels
+    counter_state["current_location"] = loc
 
     # Start worker thread
     worker_thread = threading.Thread(target=counter_worker, daemon=True)
@@ -324,7 +354,9 @@ async def start_counter():
     """Start the vehicle counter"""
     if counter_state["stream"] is None:
         try:
-            video_url = get_youtube_stream_url(app_config.YOUTUBE_URL)
+            loc = counter_state.get("current_location", "tokyo")
+            url = app_config.LOCATIONS.get(loc, {}).get("url", app_config.YOUTUBE_URL)
+            video_url = get_youtube_stream_url(url)
             counter_state["stream"] = SmoothStream(video_url).start()
             print("[INFO] Stream started")
         except Exception as e:
@@ -332,6 +364,53 @@ async def start_counter():
 
     counter_state["running"] = True
     return {"status": "running", "message": "Counter started"}
+
+
+@app.post("/location/{loc_id}")
+async def set_location(loc_id: str):
+    """Change the location URL and counter line"""
+    import config as temp_config
+    import importlib
+    importlib.reload(temp_config)
+    
+    if loc_id not in temp_config.LOCATIONS:
+        raise HTTPException(status_code=404, detail="Location not found")
+        
+    with counter_state["lock"]:
+        counter_state["running"] = False
+        if counter_state["stream"] is not None:
+            counter_state["stream"].stopped = True
+            counter_state["stream"] = None
+            
+        counter_state["vehicle_counts"] = defaultdict(int)
+        counter_state["counted_track_ids"] = set()
+        counter_state["previous_centers"] = {}
+        counter_state["current_location"] = loc_id
+        
+        # update config file with CURRENT_LOCATION
+        text = CONFIG_PATH.read_text(encoding="utf-8")
+        new_lines = []
+        for line in text.splitlines():
+            if line.startswith("CURRENT_LOCATION ="):
+                new_lines.append(f"CURRENT_LOCATION = '{loc_id}'")
+            else:
+                new_lines.append(line)
+        CONFIG_PATH.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        
+        # Load new line
+        line = temp_config.LOCATIONS[loc_id].get("line", [])
+        counter_state["line_points"] = [tuple(map(int, p)) for p in line[:2]]
+        
+    # Start stream with new url
+    try:
+        url = temp_config.LOCATIONS[loc_id]["url"]
+        video_url = get_youtube_stream_url(url)
+        counter_state["stream"] = SmoothStream(video_url).start()
+        counter_state["running"] = True
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start stream for new location: {str(e)}")
+        
+    return {"status": "success", "location": loc_id}
 
 
 @app.post("/stop")
@@ -447,4 +526,3 @@ if __name__ == "__main__":
     print("[INFO] Starting FastAPI server on http://localhost:8000")
     print("[INFO] Documentation available at http://localhost:8000/docs")
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
