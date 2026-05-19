@@ -46,8 +46,6 @@ class VehiclePipeline:
         data_manager.update_current_location(loc_id)
         video_url = get_youtube_stream_url(url)
         self.stream = SmoothStream(video_url).start()
-        with self.state.lock:
-            self.state.running = True
         return True
 
     def start_stream(self, url=None):
@@ -55,12 +53,8 @@ class VehiclePipeline:
             _, _, url = data_manager.get_current_location_data()
         video_url = get_youtube_stream_url(url)
         self.stream = SmoothStream(video_url).start()
-        with self.state.lock:
-            self.state.running = True
 
     def stop_stream(self):
-        with self.state.lock:
-            self.state.running = False
         if self.stream is not None:
             self.stream.stopped = True
             self.stream = None
@@ -136,7 +130,7 @@ class VehiclePipeline:
         while True:
             time.sleep(0.01)
             stream = self.stream
-            if not self.state.running or stream is None:
+            if stream is None:
                 continue
 
             current_time = time.time()

@@ -6,6 +6,7 @@ from collections import defaultdict
 from fastapi import FastAPI, Response, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import WebSocket, WebSocketDisconnect
 import uvicorn
 
 import config as app_config
@@ -61,6 +62,7 @@ async def lifespan(app: FastAPI):
         state_instance.line_points = [tuple(map(int, p)) for p in line_points[:2]]
         state_instance.current_location = loc
 
+    pipeline.start_stream()
     pipeline.start_workers()
     yield
 
@@ -95,16 +97,8 @@ app.add_middleware(
 @app.post("/start")
 async def start_counter():
     """Starts the vehicle counter stream. If the stream is not initialized, it sets it up and begins counting."""
-    pipeline = get_pipeline()
-    if pipeline.stream is None:
-        try:
-            pipeline.start_stream()
-            print("[INFO] Stream started")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to start stream: {str(e)}")
-    else:
-        with state_instance.lock:
-            state_instance.running = True
+    with state_instance.lock:
+        state_instance.running = True
 
     return {"status": "running", "message": "Counter started"}
 
@@ -123,7 +117,8 @@ async def set_location(loc_id: str):
 @app.post("/stop")
 async def stop_counter():
     """Stops the vehicle counter stream from processing frames."""
-    get_pipeline().stop_stream()
+    with state_instance.lock:
+        state_instance.running = False
     return {"status": "stopped"}
 
 
@@ -188,6 +183,41 @@ async def stream():
     if pipeline.model is None:
         raise HTTPException(status_code=503, detail="Model not initialized")
     return StreamingResponse(generate_stream(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+@app.websocket("/ws/stream")
+async def ws_stream(websocket: WebSocket):
+    await websocket.accept()
+
+    pipeline = get_pipeline()
+
+    if pipeline.model is None:
+        await websocket.close(code=1011)
+        return
+
+    try:
+        while True:
+            with state_instance.lock:
+                frame = state_instance.current_frame
+
+            if frame is None:
+                await asyncio.sleep(0.05)
+                continue
+
+            frame = frame.copy()
+
+            success, buffer = cv2.imencode(
+                ".jpg",
+                frame,
+                [cv2.IMWRITE_JPEG_QUALITY, 80]
+            )
+
+            if success:
+                await websocket.send_bytes(buffer.tobytes())
+
+            await asyncio.sleep(0.03)  # ~30 FPS
+
+    except WebSocketDisconnect:
+        pass
 
 
 @app.get("/health")
