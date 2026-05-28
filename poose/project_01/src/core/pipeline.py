@@ -60,7 +60,7 @@ class VehiclePipeline:
             self.stream = None
 
     def process_frame(self, frame):
-        if self.model is None or not self.state.running:
+        if self.model is None:
             return frame
 
         results = self.model.track(
@@ -73,10 +73,11 @@ class VehiclePipeline:
 
         with self.state.lock:
             line_points = list(self.state.line_points)
+            is_running = self.state.running
 
         counted_track_ids = set()
 
-        if boxes is not None and boxes.id is not None and len(line_points) == 2:
+        if is_running and boxes is not None and boxes.id is not None and len(line_points) == 2:
             p1, p2 = line_points
             for box, track_id, cls_id in zip(boxes.xyxy, boxes.id.tolist(), boxes.cls.tolist()):
                 track_id = int(track_id)
