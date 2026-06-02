@@ -139,13 +139,25 @@ async def toggle_boxes():
 
 @app.get("/get_counter")
 async def get_counter():
-    """Retrieves the current state and totals of the tracked vehicles."""
+    """Retrieves only the total sum of all vehicle counts."""
+    return {"total": state_instance.get_total_count()}
+
+
+@app.get("/get_snapshot")
+async def get_snapshot():
+    """Retrieves the full vehicle counter snapshot."""
     return state_instance.get_snapshot()
+
+
+@app.get("/get_avg_per_minute")
+async def get_avg_per_minute():
+    """Retrieves the calculated average vehicle count per minute."""
+    return {"avg_per_minute": state_instance.get_avg_per_minute()}
 
 
 @app.get("/counter_stats")
 async def counter_stats():
-    """Retrieves detailed statistics and history of the vehicle counting process."""
+    """Backward-compatible alias for the full snapshot."""
     return state_instance.get_snapshot()
 
 

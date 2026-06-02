@@ -20,6 +20,17 @@ class CounterState:
             self.vehicle_counts.clear()
             self.counted_track_ids.clear()
             self.previous_centers.clear()
+            self.history.clear()
+
+    def _average_per_second(self, history):
+        if len(history) < 2:
+            return 0.0
+
+        first = history[0]
+        last = history[-1]
+        elapsed = max(last["ts"] - first["ts"], 1.0)
+        delta_total = max(0, last["total"] - first["total"])
+        return delta_total / elapsed
 
     def record_history(self, max_age_seconds=600):
         now_ts = time.time()
@@ -28,6 +39,16 @@ class CounterState:
             self.history.append({"ts": now_ts, "total": total})
             cutoff = now_ts - max_age_seconds
             self.history = [entry for entry in self.history if entry["ts"] >= cutoff]
+
+    def get_total_count(self):
+        with self.lock:
+            return sum(self.vehicle_counts.values())
+
+    def get_avg_per_minute(self):
+        with self.lock:
+            history = list(self.history)
+
+        return self._average_per_second(history) * 60.0
 
     def get_snapshot(self):
         with self.lock:
@@ -38,14 +59,7 @@ class CounterState:
             loc = self.current_location
 
         total = sum(counts.values())
-        if len(history) >= 2:
-            first = history[0]
-            last = history[-1]
-            elapsed = max(last["ts"] - first["ts"], 1.0)
-            delta_total = max(0, int(last["total"] - first["total"]))
-            avg_per_second = delta_total / elapsed
-        else:
-            avg_per_second = 0.0
+        avg_per_second = self._average_per_second(history)
 
         return {
             "total": total,
