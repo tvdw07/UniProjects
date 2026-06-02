@@ -5,6 +5,7 @@ import config as app_config
 from stream_utils import SmoothStream, get_youtube_stream_url
 from .state import CounterState
 import data_manager
+import torch
 
 try:
     from ultralytics import YOLO
@@ -24,6 +25,7 @@ def _crossed_segment(prev_center, curr_center, p1, p2):
 class VehiclePipeline:
     def __init__(self, state: CounterState):
         self.state = state
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.model = YOLO(app_config.MODEL_PATH) if YOLO is not None else None
         self.stream = None
         self._counter_thread = None
@@ -63,11 +65,31 @@ class VehiclePipeline:
         if self.model is None:
             return frame
 
-        results = self.model.track(
-            frame, persist=True, tracker=app_config.TRACKER_CONFIG,
-            conf=app_config.DEFAULT_CONFIDENCE, classes=app_config.TRACKED_CLASS_IDS,
-            device=0, half=True, verbose=False
-        )
+        try:
+            results = self.model.track(
+                frame,
+                persist=True,
+                tracker=app_config.TRACKER_CONFIG,
+                conf=app_config.DEFAULT_CONFIDENCE,
+                classes=app_config.TRACKED_CLASS_IDS,
+                device=self.device,
+                half=(self.device != "cpu"),
+                verbose=False
+            )
+        except Exception as e:
+            print(f"[WARN] GPU failed, fallback to CPU: {e}")
+
+            results = self.model.track(
+                frame,
+                persist=True,
+                tracker=app_config.TRACKER_CONFIG,
+                conf=app_config.DEFAULT_CONFIDENCE,
+                classes=app_config.TRACKED_CLASS_IDS,
+                device="cpu",
+                half=False,
+                verbose=False
+            )
+            self.device = "cpu"
         result = results[0]
         boxes = result.boxes
 

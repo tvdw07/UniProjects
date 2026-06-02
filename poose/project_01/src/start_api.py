@@ -140,7 +140,8 @@ async def toggle_boxes():
 @app.get("/get_counter")
 async def get_counter():
     """Retrieves only the total sum of all vehicle counts."""
-    return {"total": state_instance.get_total_count()}
+    total = state_instance.get_total_count()
+    return {"total": total}
 
 
 @app.get("/get_snapshot")
