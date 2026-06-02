@@ -129,6 +129,14 @@ async def reset_counter():
     return {"status": "reset"}
 
 
+@app.post("/toggle_boxes")
+async def toggle_boxes():
+    """Toggles showing of bounding boxes on the stream."""
+    with state_instance.lock:
+        state_instance.show_boxes = not state_instance.show_boxes
+    return {"status": "success", "show_boxes": state_instance.show_boxes}
+
+
 @app.get("/get_counter")
 async def get_counter():
     """Retrieves the current state and totals of the tracked vehicles."""
@@ -233,4 +241,4 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=7999)

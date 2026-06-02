@@ -99,29 +99,22 @@ class VehiclePipeline:
                         self.state.vehicle_counts[name] += 1
                         print(f"[COUNT] {name}: {self.state.vehicle_counts[name]} (track_id={track_id})")
 
-        annotated = result.plot()
+        with self.state.lock:
+            show_boxes = self.state.show_boxes
+
+        if show_boxes:
+            if result.boxes is not None:
+                result.boxes.is_track = False
+            annotated = result.plot(conf=False)
+        else:
+            annotated = frame.copy()
+
         if len(line_points) == 1:
             cv2.circle(annotated, line_points[0], 5, (0, 255, 255), -1)
-            cv2.putText(annotated, "Click second point", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
         elif len(line_points) == 2:
             cv2.line(annotated, line_points[0], line_points[1], (0, 255, 255), 2)
             cv2.circle(annotated, line_points[0], 5, (0, 255, 255), -1)
             cv2.circle(annotated, line_points[1], 5, (0, 255, 255), -1)
-            cv2.putText(annotated, f"Line: {line_points[0]} -> {line_points[1]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-
-        overlay_y = 65
-        cv2.putText(annotated, "Counts:", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        overlay_y += 28
-
-        with self.state.lock:
-            total_count = sum(self.state.vehicle_counts.values())
-            counts_copy = dict(self.state.vehicle_counts)
-
-        cv2.putText(annotated, f"total: {total_count}", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        overlay_y += 26
-        for name in sorted(counts_copy.keys()):
-            cv2.putText(annotated, f"{name}: {counts_copy[name]}", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            overlay_y += 26
 
         return annotated
 

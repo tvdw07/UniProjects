@@ -146,13 +146,12 @@ def main():
                         name = app_config.LABELS.get(cls_id, f"class_{cls_id}")
                         vehicle_counts[name] += 1
 
-            annotated = result.plot()
+            if result.boxes is not None:
+                result.boxes.is_track = False
+            annotated = result.plot(conf=False)
             if len(line_points) == 2:
                 cv2.line(annotated, line_points[0], line_points[1], (0, 255, 255), 2)
 
-            # Text-Overlay
-            total_count = sum(vehicle_counts.values())
-            cv2.putText(annotated, f"Total: {total_count}", (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             display_frame, sx, sy = _fit_to_display(annotated, app_config.DISPLAY_WIDTH, app_config.DISPLAY_HEIGHT)
             display_scale = sx

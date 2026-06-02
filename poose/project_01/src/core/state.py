@@ -6,6 +6,7 @@ class CounterState:
     def __init__(self):
         self.lock = threading.Lock()
         self.running = False
+        self.show_boxes = True
         self.vehicle_counts = defaultdict(int)
         self.counted_track_ids = set()
         self.previous_centers = {}
@@ -61,4 +62,3 @@ class CounterState:
             "history_end": history[-1]["ts"] if history else None,
             "current_location": loc
         }
-
