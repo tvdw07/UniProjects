@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "chessboard.h"
+#include "../chessboard.h"
 
 int init_board(struct board_t* b, int n, int x, int y) {
     if (b == NULL || n <= 0 || x < 0 || y < 0 || x >= n || y >= n) {
